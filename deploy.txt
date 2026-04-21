@@ -1,0 +1,111 @@
+Verify CouchDB actually accepted your credentials:
+curl http://admin:x1root99@localhost:5984/
+{"couchdb":"Welcome","version":"3.5.1","git_sha":"44f6a43d8","uuid":"ef8ef263df5a7aa6a9d9ab8c2ee026dc","features":["access-ready","partitioned","pluggable-storage-engines","reshard","scheduler"],"vendor":{"name":"The Apache Software Foundation"}}
+
+
+FIX STEP 2 — Create user the RIGHT way
+
+Use THIS (important):
+curl -X PUT http://admin:x1root99@localhost:5984/_users/org.couchdb.user:teamstar \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "teamstar",
+    "password": "123456",
+    "roles": [],
+    "type": "user"
+  }'
+
+Test should work:
+curl -X POST http://localhost:8800/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "teamstar",
+    "password": "123456"
+  }'
+
+
+
+Run this command once (or set it in Fauxton Permissions):
+# This makes the database "Public" so PouchDB can sync without a system user
+curl -X PUT http://admin:x1root99@localhost:5984/teamstar/_security \
+     -H "Content-Type: application/json" \
+     -d '{"admins":{"names":["admin"],"roles":[]},"members":{"names":[],"roles":[]}}'
+
+
+
+     // src/db/config.js
+import { openDB } from "idb";
+
+
+export const dbPromise = openDB("teamstar", 3, { // ⬅️ bumped version
+  upgrade(db) {
+    // ----------------------------
+    // USERS
+    // ----------------------------
+    if (!db.objectStoreNames.contains("users")) {
+      const userStore = db.createObjectStore("users", {
+        keyPath: "_id",
+      });
+
+      userStore.createIndex("phone", "phone", { unique: true });
+      // ✅ ADD THIS
+      userStore.createIndex("org_id", "org_id", { multiEntry: true });
+    }
+
+
+    // ----------------------------
+    // TASKS
+    // ----------------------------
+    if (!db.objectStoreNames.contains("tasks")) {
+      const taskStore = db.createObjectStore("tasks", {
+        keyPath: "_id",
+      });
+      taskStore.createIndex("org_id", "org_id");
+      taskStore.createIndex("type", "type");
+      taskStore.createIndex("status", "status");
+    }
+
+
+    // ----------------------------
+    // TEAMS (MISSING BEFORE)
+    // ----------------------------
+    if (!db.objectStoreNames.contains("teams")) {
+      const teamStore = db.createObjectStore("teams", {
+        keyPath: "_id",
+      });
+      teamStore.createIndex("org_id", "org_id");
+    }
+
+    // ----------------------------
+    // ORGANIZATIONS (MISSING BEFORE)
+    // ----------------------------
+    if (!db.objectStoreNames.contains("organizations")) {
+      db.createObjectStore("organizations", {
+        keyPath: "_id",
+      });
+    }
+
+    if (!db.objectStoreNames.contains("notifications")) {
+      db.createObjectStore("notifications", {
+        keyPath: "_id",
+      });
+    }
+
+        // ----------------------------
+    // TIMELOGS (🔥 ADD THIS)
+    // ----------------------------
+    if (!db.objectStoreNames.contains("timelogs")) {
+      const logStore = db.createObjectStore("timelogs", {
+        keyPath: "_id",
+      });
+
+      // 🔥 IMPORTANT INDEX for task queries
+      logStore.createIndex("task_id", "task_id", {
+        unique: false,
+      });
+    }
+    
+  },
+});
+
+

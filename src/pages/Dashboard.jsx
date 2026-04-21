@@ -1,0 +1,286 @@
+import { useState, useEffect } from "react";
+import { fetchedUserData } from "@/db/api";
+import { Link } from "react-router-dom";
+import {
+  CheckSquare,
+  Clock,
+  AlertTriangle,
+  Users,
+  Plus,
+  ArrowRight,
+  TrendingUp,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import StatCard from "../components/StatCard";
+import TaskCard from "../components/TaskCard";
+import TaskFormDialog from "../components/TaskFormDialog";
+import TaskDetailDialog from "../components/TaskDetailDialog";
+import EmptyState from "../components/EmptyState";
+import { isToday, isPast, isFuture } from "date-fns";
+import { useAuth } from "@/lib/AuthContext";
+import { getDB } from "@/db/couch";
+import { getSavedTheme, applyTheme } from "@/utils/theme";
+
+export default function Dashboard() {
+  const { isAuthenticated, user, hasFullAccess } = useAuth();
+  const [tasks, setTasks] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [organizations, setOrganizations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editTask, setEditTask] = useState(null);
+  const [detailTask, setDetailTask] = useState(null);
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    return saved ? saved === "dark" : false;
+  });
+
+
+  // -----------------------------
+  // LOAD DATA (PouchDB version)
+  // -----------------------------
+  const loadData = async () => {
+    setLoading(true);
+
+    try {
+      const data = await fetchedUserData(user);
+
+      setTasks(data.tasks ?? []);
+      setTeams(data.teams ?? []);
+      setMembers(data.members ?? []);
+      setOrganizations(data.organizations ?? []);
+
+
+    } catch (err) {
+      console.error("Dashboard load error:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+  useEffect(() => {
+    loadData();
+
+    // 1. Setup PouchDB Listener
+    // Ensure we use the string username here
+    const localDB = getDB(user?.username);
+    const changes = localDB?.changes({
+      since: 'now',
+      live: true,
+      include_docs: true
+    }).on('change', () => {
+      loadData();
+    });
+
+    // 2. Setup Theme
+    const theme = getSavedTheme();
+    setDarkMode(applyTheme(theme));
+
+    // 3. Setup Custom Route Listener
+    const handler = (e) => {
+      if (e.detail?.route === window.location.pathname) {
+        loadData();
+      }
+    };
+    window.addEventListener("route:changed", handler);
+
+    // ==========================================
+    // ✅ SINGLE CLEANUP FUNCTION
+    // ==========================================
+    return () => {
+      console.log("Cleaning up Dashboard listeners...");
+      changes?.cancel(); // Stop watching DB
+      window.removeEventListener("route:changed", handler); // Stop watching routes
+    };
+  }, []); // Only re-run if the username changes
+
+  // -----------------------------
+  // FILTERS (unchanged logic)
+  // -----------------------------
+  const todayTasks = tasks.filter(
+    (t) =>
+      t.status === "today" ||
+      (t.due_date && isToday(new Date(t.due_date)))
+  );
+
+  const upcomingTasks = tasks.filter(
+    (t) =>
+      t.status === "upcoming" &&
+      (!t.due_date || isFuture(new Date(t.due_date)))
+  );
+
+  const overdueTasks = tasks.filter(
+    (t) =>
+      t.status === "previous" ||
+      (t.due_date &&
+        isPast(new Date(t.due_date)) &&
+        t.status !== "completed" &&
+        !isToday(new Date(t.due_date)))
+  );
+
+  // const completedTasks = tasks.filter((t) => t.status === "completed");
+
+
+
+  // -----------------------------
+  // LOADING STATE
+  // -----------------------------
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // -----------------------------
+  // UI
+  // -----------------------------
+  return (
+    <div className="max-w-7xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            Dashboard
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Overview of your workspace
+          </p>
+        </div>
+        {hasFullAccess && (
+          <Button
+            onClick={() => {
+              setEditTask(null);
+              setShowForm(true);
+            }}
+            className="rounded-xl shadow-lg shadow-primary/25"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            New Task
+          </Button>
+        )}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total Tasks" value={tasks.length} icon={CheckSquare} />
+        <StatCard title="Today" value={todayTasks.length} icon={Clock} />
+        <StatCard title="Overdue" value={overdueTasks.length} icon={AlertTriangle} />
+        {hasFullAccess && (
+          <StatCard title="Teams" value={teams.length} icon={Users} />
+        )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+        {hasFullAccess && (
+          <Button
+            variant="outline"
+            className="rounded-xl h-auto py-3 justify-start"
+            onClick={() => {
+              setEditTask(null);
+              setShowForm(true);
+            }}
+          >
+            <Plus className="h-4 w-4 mr-2 text-primary" />
+            <span className="text-xs font-medium">Add Task</span>
+          </Button>
+        )}
+
+        {hasFullAccess && (
+          <Link to="/teams">
+            <Button variant="outline" className="rounded-xl h-auto py-3 justify-start w-full">
+              <Users className="h-4 w-4 mr-2 text-primary" />
+              <span className="text-xs font-medium">View Teams</span>
+            </Button>
+          </Link>
+        )}
+        {hasFullAccess && (
+          <Link to="/members">
+            <Button variant="outline" className="rounded-xl h-auto py-3 justify-start w-full">
+              <TrendingUp className="h-4 w-4 mr-2 text-primary" />
+              <span className="text-xs font-medium">Members</span>
+            </Button>
+          </Link>
+        )}
+
+
+
+        <Link to="/calendar">
+          <Button variant="outline" className="rounded-xl h-auto py-3 justify-start w-full">
+            <Clock className="h-4 w-4 mr-2 text-primary" />
+            <span className="text-xs font-medium">Calendar</span>
+          </Button>
+        </Link>
+      </div>
+
+      {/* Recent Tasks */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">Recent Tasks</h2>
+          <Link
+            to="/tasks"
+            className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+          >
+            View All <ArrowRight className="h-3 w-3" />
+          </Link>
+        </div>
+
+        {tasks.length === 0 ? (
+          <EmptyState
+            icon={CheckSquare}
+            title="No tasks yet"
+            description="Create your first task to get started"
+            action={hasFullAccess && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setEditTask(null);
+                  setShowForm(true);
+                }}
+              >
+                Create Task
+              </Button>
+            )
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {tasks.slice(0, 6).map((task) => (
+
+              <TaskCard
+                key={task._id}
+                task={task}
+                members={members}
+                onClick={(t) => setDetailTask(t)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <TaskDetailDialog
+        open={!!detailTask}
+        onOpenChange={(v) => { if (!v) setDetailTask(null); }}
+        task={detailTask}
+        members={members}
+        onEdit={(t) => { setDetailTask(null); setEditTask(t); setShowForm(true); }}
+      />
+
+      <TaskFormDialog
+        open={showForm}
+        onOpenChange={setShowForm}
+        task={editTask}
+        teams={teams}
+        members={members}
+        organizations={organizations}
+        onSaved={loadData}
+      />
+    </div>
+  );
+}
