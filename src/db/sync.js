@@ -13,7 +13,7 @@ export async function startSync({ username, token, dbName }) {
   // 'YWRtaW46eDFyb290OTk=' is the base64 of 'admin:x1root99'
   const authString = btoa("admin:x1root99"); 
 
-  const remoteDB = new PouchDB(`http://localhost:5984/${dbName}`, {
+  const remoteDB = new PouchDB(`https://ds1.d3.net/couchdb/${dbName}`, {
     skip_setup: true,
     fetch: function (url, opts) {
       // 2. Use Basic Auth instead of Bearer
