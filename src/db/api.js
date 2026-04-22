@@ -2,7 +2,14 @@ import { getDB } from "./couch";
 
 
 export async function fetchedUserData(user) {
-  const db = getDB(user?.username);
+
+  if (!user?.id) {
+    return null; // or loader
+  }
+
+  const db = getDB(user?.id);
+
+  
   if (!db) {
     return {
       tasks: [],
@@ -109,6 +116,7 @@ export async function fetchedUserData(user) {
         .map((u) => ({
           user_id: u._id,
           phone: u.phone,
+          first_name: u.first_name
         })),
     };
   } catch (err) {
@@ -127,7 +135,7 @@ export async function fetchedUserData(user) {
 
 
 export async function getNotifications(user) {
-  const db = getDB(user?.username);
+  const db = getDB(user?.id);
 
 
   if (!db) return { notifications: [], unreadCount: 0 };
@@ -199,7 +207,7 @@ export async function getNotifications(user) {
 
 
 export async function getTasksLogs(user, taskId) {
-  const db = getDB(user?.username);
+  const db = getDB(user?.id);
 
   if (!db) return { allLogs: [] };
 
@@ -230,8 +238,8 @@ export async function getTasksLogs(user, taskId) {
 }
 
 
-export async function getTeam(teamId, username) {
-  const db = getDB(username);
+export async function getTeam(teamId, userId) {
+  const db = getDB(userId);
   if (!db || !teamId) return { team: null };
 
   try {
@@ -257,8 +265,8 @@ export async function getTeam(teamId, username) {
 /**
  * Fetches a specific user document by ID
  */
-export async function getUser(userId, username) {
-  const db = getDB(username);
+export async function getUser(userId) {
+  const db = getDB(userId);
   if (!db || !userId) return null;
 
   try {

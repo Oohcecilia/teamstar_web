@@ -14,6 +14,9 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
 import NotificationBell from "@/components/NotificationBell";
+import tf_logo from "@/assets/tf-logo.png";
+import ts_logo from "@/assets/ts-logo.png";
+import { useIsMobile } from "@/hooks/use-mobile"
 
 // =========================
 // NAV ITEMS WITH ROLES
@@ -59,6 +62,7 @@ export default function Sidebar({ onClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, hasFullAccess } = useAuth();
+  const isMobile = useIsMobile()
 
   // =========================
   // ROLE CHECK (SCALABLE)
@@ -87,12 +91,28 @@ export default function Sidebar({ onClose }) {
       {/* Logo */}
       <div className="p-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center">
-            <CheckSquare className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-bold tracking-tight">
-            Teamstar
-          </span>
+          {isMobile ? (
+            <div className="h-9 w-9 rounded-xl overflow-hidden bg-background  flex items-center justify-center flex-shrink-0">
+              <img
+                src={ts_logo}
+                alt="Teamstar Logo"
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ) : (
+        <div
+          className={cn(
+            "flex items-center p-1 rounded transition-colors",
+            "dark:bg-primary d dark:shadow-md dark:shadow-primary/25"
+          )}
+        >
+          <img
+            src={tf_logo}
+            alt="Teamstar Text Logo"
+            className="h-4 w-auto object-contain"
+          />
+        </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1">

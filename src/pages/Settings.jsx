@@ -18,11 +18,11 @@ export default function Settings() {
   });
 
 useEffect(() => {
-  if (!user?.id || !user?.username) return;
+  if (!user?.id) return;
 
   const loadUserPref = async () => {
     try {
-      const data = await getUser(user.id, user.username);
+      const data = await getUser(user.id);
       setPref(data);
 
       const theme = data?.theme || getSavedTheme();

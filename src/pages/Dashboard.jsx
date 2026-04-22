@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { fetchedUserData } from "@/db/api";
 import { Link } from "react-router-dom";
 import {
@@ -23,80 +23,92 @@ import { getSavedTheme, applyTheme } from "@/utils/theme";
 
 export default function Dashboard() {
   const { isAuthenticated, user, hasFullAccess } = useAuth();
+
+  const [detailTask, setDetailTask] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [editTask, setEditTask] = useState(null);
+
   const [tasks, setTasks] = useState([]);
   const [teams, setTeams] = useState([]);
   const [members, setMembers] = useState([]);
   const [organizations, setOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editTask, setEditTask] = useState(null);
-  const [detailTask, setDetailTask] = useState(null);
 
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem("theme");
     return saved ? saved === "dark" : false;
   });
 
+  const debounceRef = useRef(null);
 
   // -----------------------------
-  // LOAD DATA (PouchDB version)
+  // LOAD DATA (STABLE)
   // -----------------------------
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = useCallback(async () => {
+    if (!user?.id) return;
 
     try {
+      setLoading(true);
+
       const data = await fetchedUserData(user);
 
       setTasks(data.tasks ?? []);
       setTeams(data.teams ?? []);
       setMembers(data.members ?? []);
       setOrganizations(data.organizations ?? []);
-
-
     } catch (err) {
       console.error("Dashboard load error:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?.id]); // ✅ tighter dependency
 
-
+  // -----------------------------
+  // INITIAL LOAD + SYNC + LISTENERS
+  // -----------------------------
   useEffect(() => {
-    loadData();
+    if (!user?.id) return;
 
-    // 1. Setup PouchDB Listener
-    // Ensure we use the string username here
-    const localDB = getDB(user?.username);
+    let isMounted = true;
+
+    const init = async () => {
+      await loadData();
+    };
+
+    init();
+
+    const localDB = getDB(user.id);
+
     const changes = localDB?.changes({
-      since: 'now',
+      since: "now",
       live: true,
-      include_docs: true
-    }).on('change', () => {
-      loadData();
+      include_docs: false,
+    }).on("change", () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+
+      debounceRef.current = setTimeout(() => {
+        if (!isMounted) return;
+        loadData();
+      }, 300);
     });
 
-    // 2. Setup Theme
-    const theme = getSavedTheme();
-    setDarkMode(applyTheme(theme));
+    return () => {
+      isMounted = false;
+      changes?.cancel();
 
-    // 3. Setup Custom Route Listener
-    const handler = (e) => {
-      if (e.detail?.route === window.location.pathname) {
-        loadData();
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
     };
-    window.addEventListener("route:changed", handler);
+  }, [user?.id]); // ✅ IMPORTANT: depend only on id
 
-    // ==========================================
-    // ✅ SINGLE CLEANUP FUNCTION
-    // ==========================================
-    return () => {
-      console.log("Cleaning up Dashboard listeners...");
-      changes?.cancel(); // Stop watching DB
-      window.removeEventListener("route:changed", handler); // Stop watching routes
-    };
-  }, []); // Only re-run if the username changes
-
+  // -----------------------------
+  // THEME (RUN ONCE)
+  // -----------------------------
+  useEffect(() => {
+    const theme = getSavedTheme();
+    setDarkMode(applyTheme(theme));
+  }, []); // ✅ THIS is the fix
   // -----------------------------
   // FILTERS (unchanged logic)
   // -----------------------------

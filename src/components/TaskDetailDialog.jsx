@@ -8,6 +8,7 @@ import { Play, Square, Clock, Calendar, MapPin, Users, TrendingUp, Edit } from "
 import { format, formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/AuthContext";
+import { hasAccessTask } from "@/utils/helpers"
 
 import { getDB } from "@/db/couch";
 
@@ -61,11 +62,9 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
         const res = await getTasksLogs(user, task._id);
         const logs = res?.allLogs || [];
 
-        console.log("logs", logs);
 
         const enrichedLogs = await Promise.all(
             logs.map(async (log) => {
-                console.log(`LOG : ${JSON.stringify(log)}`)
                 const logUser = await getUser(log.started_by || log.updated_by);
                 return {
                     ...log,
@@ -75,8 +74,6 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
         );
 
         setTimeLogs(enrichedLogs);
-
-        console.log("USERS:", enrichedLogs.map(l => l.user));
 
         return enrichedLogs; // ✅ IMPORTANT FIX
     };
@@ -132,7 +129,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
             return;
         }
 
-        const db = getDB(user?.username); // Using your specified DB getter
+        const db = getDB(user?.id); // Using your specified DB getter
         const now = new Date().toISOString();
 
         const duration_seconds = elapsed;
@@ -188,7 +185,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
 
         try {
             // 1. Get the PouchDB instance
-            const db = getDB(user?.username);
+            const db = getDB(user?.id);
             if (!db) return;
 
             // 2. Fetch the fresh document to get the current _rev
@@ -219,6 +216,7 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
 
     if (!task) return null;
 
+    const allowed = hasAccessTask(user, task)
     const assignedMembers = (task.assigned_to || []).map((id) => members?.find((m) => m.id === id)).filter(Boolean);
     const totalLoggedMins = timeLogs.reduce((sum, l) => sum + (l.duration_minutes || 0), 0);
     const totalLoggedHours = (totalLoggedMins / 60).toFixed(2);
@@ -233,27 +231,32 @@ export default function TaskDetailDialog({ open, onOpenChange, task, members, on
                     <DialogHeader>
                         <div className="flex items-start justify-between gap-2 me-2">
                             <DialogTitle className="text-base leading-snug pr-2">{task.title}</DialogTitle>
-                            <div className="flex gap-2">
-                                <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); onEdit?.(task); }}>
-                                    <Edit className="h-3.5 w-3.5 mr-1" /> Edit
-                                </Button>
-                                <button
-                                    autoFocus={false}
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setDeleteTask(task);
-                                    }}
-                                    className="
+                            {allowed &&
+                                (
+                                    <div className="flex gap-2">
+                                        <Button size="sm" variant="outline" onClick={() => { onOpenChange(false); onEdit?.(task); }}>
+                                            <Edit className="h-3.5 w-3.5 mr-1" /> Edit
+                                        </Button>
+                                        <button
+                                            autoFocus={false}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteTask(task);
+                                            }}
+                                            className="
                                     p-1.5 rounded-lg
                                     bg-destructive/10
                                     text-destructive
                                     opacity-60 hover:opacity-100
                                     transition
                                 "
-                                >
-                                    <Trash2 className="h-4 w-4" />
-                                </button>
-                            </div>
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                )
+                            }
+
                         </div>
                     </DialogHeader>
 

@@ -14,25 +14,3 @@ export function validate(schema, data) {
 
   return true;
 }
-
-// ----------------------------
-// SAFE INSERT / ENTITY BUILDER
-// ----------------------------
-export function createEntity(schema, data) {
-  const finalData = { ...data };
-
-  // apply defaults
-  Object.entries(schema.defaults || {}).forEach(
-    ([key, value]) => {
-      if (!(key in finalData)) {
-        finalData[key] =
-          typeof value === "function" ? value() : value;
-      }
-    }
-  );
-
-  // validate
-  validate(schema, finalData);
-
-  return finalData;
-}

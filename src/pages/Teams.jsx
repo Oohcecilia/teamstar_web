@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import EmptyState from "../components/EmptyState";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -168,7 +168,7 @@ export default function Teams() {
     e.preventDefault();
 
     // 1. Get PouchDB instance
-    const db = getDB(user?.username);
+    const db = getDB(user?.id);
     if (!db) return;
 
     if (!form.name || !form.org_id) return;
@@ -216,7 +216,7 @@ export default function Teams() {
     if (!deleteTeam?._id) return;
 
     try {
-      const db = getDB(user?.username);
+      const db = getDB(user?.id);
 
       // Must fetch the document to get the latest _rev before removal
       const docToDelete = await db.get(deleteTeam._id);
@@ -335,6 +335,9 @@ export default function Teams() {
             <DialogTitle>
               {editTeam ? "Edit Team" : "New Team"}
             </DialogTitle>
+              <DialogDescription>
+                Create a new team or update existing team details.
+              </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4">

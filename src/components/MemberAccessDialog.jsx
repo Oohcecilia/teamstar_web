@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { getDB } from "@/db/couch";
 
 
-const ROLES = ["admin", "supervisor", "member"];
+const ROLES = ["member"];
 
 import { useAuth } from "@/lib/AuthContext";
 
@@ -92,7 +93,7 @@ const handleSave = async () => {
 
     try {
       // 1. Get the PouchDB instance
-      const db = getDB(user?.username);
+      const db = getDB(user?.id);
       if (!db) return;
 
       // 2. Fetch the member doc from PouchDB to get latest _rev
@@ -161,6 +162,9 @@ const handleSave = async () => {
           <DialogTitle className="text-center">
             Manage Access — {member.first_name || member.email}
           </DialogTitle>
+            <DialogDescription>
+              View and update user roles, access rights, and organization permissions.
+            </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="teams" className="flex-1 flex flex-col overflow-hidden">

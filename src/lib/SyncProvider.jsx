@@ -14,8 +14,7 @@ useEffect(() => {
   if (!started.current) {
     // 👈 ADD dbName here!
     startSync({
-      username: user.username,
-      token: user.token,
+      id: user.id,
       dbName: user.dbName 
     });
 

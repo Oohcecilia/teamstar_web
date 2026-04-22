@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import MemberAccessDialog from "@/components/MemberAccessDialog";
 
 const ROLE_STYLE = {
@@ -58,8 +58,6 @@ export default function Members() {
   // =========================
   const load = async () => {
     setLoading(true);
-
-    console.log(JSON.stringify(user))
 
     try {
       const res = await fetchedUserData(user);
@@ -113,13 +111,11 @@ export default function Members() {
         message: `${user?.id || "Someone"} invited you to join ${selectedOrgName}.`,
         org_id: selectedOrg,
         user_id: selectedUserId,
-        role: inviteRole,
+        role: '',
         created_by: user?.id,
       };
 
-      console.log(`PAYLOAD: ${JSON.stringify(payload)}`);
-
-      await createNotification(payload);
+      await createNotification(payload, user?.id);
 
       setInviteSuccess(true);
 
@@ -194,7 +190,7 @@ export default function Members() {
             const memberTeams = (member.team_ids || [])
               .map((id) => teamMap[id])
               .filter(Boolean);
-            const memberName = `${member.first_name}  ${member.first_name}`;
+            const memberName = `${member.first_name}  ${member.last_name}`;
 
             return (
               <div
@@ -213,7 +209,7 @@ export default function Members() {
 
                   <div className="min-w-0 flex-1">
                     <h3 className="font-semibold text-sm truncate">
-                      { memberName || "Unnamed"}
+                      {memberName || "Unnamed"}
                       {member._id === user?.id && (
                         <span className="ml-1 text-primary text-[10px]">(You)</span>
                       )}
@@ -280,6 +276,9 @@ export default function Members() {
 
           <DialogHeader>
             <DialogTitle>Invite Member</DialogTitle>
+            <DialogDescription>
+              Send an invitation to add a new member.
+            </DialogDescription>
           </DialogHeader>
 
           {inviteSuccess ? (
@@ -308,26 +307,44 @@ export default function Members() {
                   onFocus={() => setShowPhoneDropdown(true)}
                   placeholder="Search phone number..."
                   required
+                  className="
+                      bg-white text-gray-900 border-gray-300
+                      dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700
+                      placeholder:text-gray-400 dark:placeholder:text-gray-500
+                      focus-visible:ring-2 focus-visible:ring-blue-500
+                    "
                 />
 
                 {showPhoneDropdown && phoneQuery && (
-                  <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow max-h-40 overflow-y-auto">
+                  <div className="
+                    absolute z-50 mt-1 w-full
+                    bg-white border rounded-md shadow max-h-40 overflow-y-auto
+                    dark:bg-gray-900 dark:border-gray-700
+                  ">
                     {filteredUsers.length > 0 ? (
                       filteredUsers.map((u) => (
                         <div
                           key={u.user_id}
-                          className="px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer"
+                          className="
+                            px-3 py-2 text-sm cursor-pointer
+                            text-gray-900 hover:bg-gray-100
+                            dark:text-gray-100 dark:hover:bg-gray-800
+                          "
                           onClick={() => {
-                            setPhoneQuery(u.phone);     // show phone
+                            setPhoneQuery(u.phone);       // show phone
                             setSelectedUserId(u.user_id); // store ID
                             setShowPhoneDropdown(false);
                           }}
                         >
-                          {u.phone}
+                          {u.phone} - {u.first_name}
                         </div>
                       ))
                     ) : (
-                      <div className="px-3 py-2 text-sm text-gray-400">
+                      <div className="
+                        px-3 py-2 text-sm
+                        text-gray-400
+                        dark:text-gray-500
+                      ">
                         No phone number found
                       </div>
                     )}
@@ -349,26 +366,6 @@ export default function Members() {
                         {org.name}
                       </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label>Role *</Label>
-                <Select
-                  value={inviteRole}
-                  onValueChange={setInviteRole}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-
-                  <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="supervisor">
-                      Supervisor
-                    </SelectItem>
-                    <SelectItem value="member">Member</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

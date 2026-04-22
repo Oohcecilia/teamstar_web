@@ -70,6 +70,7 @@ export default function NotificationBell({ position = "right" }) {
   const ref = useRef(null);
   const [shouldReload, setShouldReload] = useState(false);
 
+
   // ----------------------------
   // LOAD NOTIFICATIONS
   // ----------------------------
@@ -143,7 +144,7 @@ export default function NotificationBell({ position = "right" }) {
 
   const acceptInvitation = async (notif) => {
     try {
-      const db = getDB(user?.username);
+      const db = getDB(user?.id);
       if (!db) return;
 
       // 1. UPDATE USER PERMISSIONS
@@ -187,9 +188,6 @@ export default function NotificationBell({ position = "right" }) {
 
       await db.put(updatedNotif);
 
-      // 4. CLEANUP
-      // If using usePouchChanges hook, the UI will auto-refresh.
-      // Otherwise, manual reload trigger:
       setShouldReload?.(true);
 
     } catch (err) {
@@ -199,7 +197,7 @@ export default function NotificationBell({ position = "right" }) {
 
   const rejectInvitation = async (notif) => {
     try {
-      const db = getDB(user?.username);
+      const db = getDB(user?.id);
       if (!db) return;
 
       const freshNotif = await db.get(notif._id);
@@ -224,7 +222,7 @@ export default function NotificationBell({ position = "right" }) {
    */
   const markAllRead = async () => {
     try {
-      const db = getDB(user?.username);
+      const db = getDB(user?.id);
       if (!db || !notifications.length) return;
 
       const now = new Date().toISOString();
@@ -257,7 +255,7 @@ export default function NotificationBell({ position = "right" }) {
     if (!user?.id) return;
 
     try {
-      const db = getDB(user.username);
+      const db = getDB(user.id);
       if (!db) return;
 
 
@@ -354,7 +352,6 @@ export default function NotificationBell({ position = "right" }) {
             ) : (
               notifications.map((n) => {
 
-                console.log(`TYPE ${n.type}`);
                 const cfg = typeConfig[n.category] || typeConfig.info;
                 const Icon = cfg.icon;
                 const isInvitation = n.category === "invitation";

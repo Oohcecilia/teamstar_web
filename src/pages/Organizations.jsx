@@ -89,7 +89,7 @@ export default function Organizations() {
 const handleSave = async (e) => {
     e.preventDefault();
 
-    const db = getDB(user?.username);
+    const db = getDB(user?.id);
     if (!db) return;
 
     try {
@@ -164,7 +164,7 @@ const handleSave = async (e) => {
     if (!deleteOrg) return;
 
     try {
-      const db = getDB(user?.username);
+      const db = getDB(user?.id);
       
       // PouchDB delete needs the _id AND the current _rev
       // You can either pass the doc you already have or fetch it fresh

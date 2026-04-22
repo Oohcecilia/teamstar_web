@@ -16,7 +16,6 @@ const AuthContext = createContext();
 const STORAGE_KEYS = {
   ID: "id",
   TOKEN: "token",
-  USERNAME: "username",
   DB: "dbName",
   ACCESS_RIGHTS: "access_rights",
 };
@@ -36,7 +35,6 @@ export const AuthProvider = ({ children }) => {
 
     localStorage.setItem(STORAGE_KEYS.ID, session.id || "");
     localStorage.setItem(STORAGE_KEYS.TOKEN, session.token || "");
-    localStorage.setItem(STORAGE_KEYS.USERNAME, session.username || "");
     localStorage.setItem(STORAGE_KEYS.DB, session.dbName || "");
     localStorage.setItem(
       STORAGE_KEYS.ACCESS_RIGHTS,
@@ -61,7 +59,6 @@ export const AuthProvider = ({ children }) => {
       try {
         const id = localStorage.getItem(STORAGE_KEYS.ID);
         const token = localStorage.getItem(STORAGE_KEYS.TOKEN);
-        const username = localStorage.getItem(STORAGE_KEYS.USERNAME);
         const dbName = localStorage.getItem(STORAGE_KEYS.DB);
 
         let access_rights = [];
@@ -73,10 +70,9 @@ export const AuthProvider = ({ children }) => {
           access_rights = [];
         }
 
-        if (token && username && dbName) {
+        if (token && id && dbName) {
           const session = {
             id,
-            username,
             token,
             dbName,
             access_rights,
@@ -120,14 +116,13 @@ export const AuthProvider = ({ children }) => {
         throw new Error(data?.error || "Invalid credentials");
       }
 
-      const { username, token, db, user } = data;
+      const { token, db, user_session } = data;
 
       const session = {
-        id: user?.id || user?._id,
-        username,
+        id: user_session?.id || user_session?._id,
         token,
         dbName: db,
-        access_rights: user?.access_rights || [],
+        access_rights: user_session?.access_rights || [],
       };
 
       saveSession(session);
@@ -168,11 +163,10 @@ export const AuthProvider = ({ children }) => {
         throw new Error(data?.error || "Registration failed");
       }
 
-      const { username, token, db, user } = data;
+      const { token, db, user } = data;
 
       const session = {
         id: user?.id || user?._id,
-        username,
         token,
         dbName: db,
         access_rights: user?.access_rights || [],
@@ -226,6 +220,7 @@ export const AuthProvider = ({ children }) => {
       login,
       register,
       logout,
+      setUser,
       setAuthError,
     }),
     [
@@ -236,6 +231,7 @@ export const AuthProvider = ({ children }) => {
       hasFullAccess,
       login,
       register,
+      setUser,
       logout,
     ]
   );

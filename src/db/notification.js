@@ -1,8 +1,8 @@
 import { nanoid } from "nanoid";
 import { getDB } from "@/db/couch";
 
-export const createNotification = async (payload, username) => {
-  const db = getDB(username);
+export const createNotification = async (payload, userId) => {
+  const db = getDB(userId);
   if (!db) return;
 
   const notification = {

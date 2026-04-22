@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 // GENERIC CREATE
 export async function createRecord(user, storeName, data) {
   // 1. Get the DB instance for the user
-  const db = getDB(user?.username);
+  const db = getDB(user?.id);
 
   if (db) {
     // 2. Prepare the record
@@ -33,7 +33,7 @@ export async function createRecord(user, storeName, data) {
 export async function getByOrg(user, storeName, orgIds = []) {
   if (!orgIds.length) return [];
 
-  const db = getDB(user?.username);
+  const db = getDB(user?.id);
 
   if (!db) return [];
 

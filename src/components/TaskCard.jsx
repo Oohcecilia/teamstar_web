@@ -44,7 +44,7 @@ export default function TaskCard({ task, members, onClick }) {
   const handleComplete = async (task) => {
   try {
 
-    const db = getDB(user?.username);
+    const db = getDB(user?.id);
     // 1. UPDATE TASK IN POUCHDB
     // We must ensure the current _rev is included for the update to work
     const updatedTask = {

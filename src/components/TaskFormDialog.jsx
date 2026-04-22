@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,7 +128,7 @@ export default function TaskFormDialog({
     e.preventDefault();
     setSaving(true);
 
-    const db = getDB(user?.username);
+    const db = getDB(user?.id);
     if (!db) return;
 
     const data = {
@@ -167,7 +168,7 @@ export default function TaskFormDialog({
           team_id: data.team_id,
           org_id: data.org_id,
           created_by: user?._id,
-        }, user.username);
+        }, user.id);
       }
 
       // =========================
@@ -191,7 +192,7 @@ export default function TaskFormDialog({
           team_id: data.team_id,
           org_id: data.org_id,
           created_by: user?._id,
-        }, user.username);
+        }, user.id);
       }
 
       onSaved?.(); // Usually triggers loadData()
@@ -226,7 +227,11 @@ export default function TaskFormDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{task?._id ? "Edit Task" : "New Task"}</DialogTitle>
+          <DialogDescription>
+            Fill in the details to create or update a task.
+          </DialogDescription>
         </DialogHeader>
+
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* TITLE */}

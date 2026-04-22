@@ -81,9 +81,8 @@ def login(data: LoginRequest):
     return {
         "success": True,
         "token": token,
-        "username": user_doc["phone"],
         "db": DB_NAME,
-        "user": {
+        "user_session": {
             "id": user_doc["_id"],
             "name": f"{user_doc['first_name']} {user_doc['last_name']}",
             "access_rights": user_doc.get("access_rights")

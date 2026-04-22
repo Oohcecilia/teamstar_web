@@ -1,35 +1,47 @@
-
 import PouchDB from "pouchdb/dist/pouchdb.js"
 import { getDB, resetLocalDB } from "./couch"
+
+
+const VITE_POUCHDB_ROOT_URL = import.meta.env.VITE_POUCHDB_ROOT_URL;
+const VITE_AUTH_STRING = import.meta.env.VITE_AUTH_STRING;
 
 let syncHandler = null
 
 // db/sync.js
-export async function startSync({ username, token, dbName }) {
-  const localDB = getDB(username);
+export async function startSync({ id, dbName }) {
+  const localDB = getDB(id);
+
   if (syncHandler) return syncHandler;
 
-  // 1. Create the Auth String (admin:x1root99 encoded)
-  // 'YWRtaW46eDFyb290OTk=' is the base64 of 'admin:x1root99'
-  const authString = btoa("admin:x1root99"); 
+  const authString = btoa(VITE_AUTH_STRING);
 
-  const remoteDB = new PouchDB(`https://ds1.d3.net/couchdb/${dbName}`, {
-    skip_setup: true,
-    fetch: function (url, opts) {
-      // 2. Use Basic Auth instead of Bearer
-      opts.headers.set('Authorization', `Basic ${authString}`);
-      return PouchDB.fetch(url, opts);
+  const remoteDB = new PouchDB( `${VITE_POUCHDB_ROOT_URL}/${dbName}`,
+    {
+      skip_setup: true,
+      fetch: (url, opts) => {
+        opts.headers.set("Authorization", `Basic ${authString}`);
+        return PouchDB.fetch(url, opts);
+      }
     }
-  });
+  );
 
-  syncHandler = localDB.sync(remoteDB, {
-    live: true,
-    retry: true,
-  })
-  .on("change", (info) => console.log("🔄 Sync success:", info))
-  .on("error", (err) => console.error("❌ Sync error:", err));
+  try {
+    // 🔥 1. INITIAL PULL (VERY IMPORTANT)
+    await localDB.replicate.from(remoteDB);
 
-  return syncHandler;
+    // 🔥 2. LIVE SYNC
+    syncHandler = localDB.sync(remoteDB, {
+      live: true,
+      retry: true,
+    })
+      .on("change", (info) => console.log("🔄 Sync success:", info))
+      .on("error", (err) => console.error("❌ Sync error:", err));
+
+    return syncHandler;
+
+  } catch (err) {
+    console.warning("❌ Sync init failed:", err);
+  }
 }
 
 export function stopSync() {

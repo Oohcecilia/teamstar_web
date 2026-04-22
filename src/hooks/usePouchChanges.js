@@ -3,15 +3,16 @@ import { getDB } from '@/db/couch';
 
 /**
  * A reusable hook to listen for PouchDB changes.
- * @param {Object} user - The current user object (must contain username).
+ * @param {Object} user - The current user object (must contain Id).
  * @param {Function} onUpdate - The function to run when a change occurs (e.g., loadData).
  * @param {String} docType - (Optional) Filter changes by document type.
  */
 export function usePouchChanges(user, onUpdate, docType = null) {
   useEffect(() => {
-    if (!user?.username || !onUpdate) return;
+    const session = user.session;
+    if (!session || !onUpdate) return;
 
-    const db = getDB(user.username);
+    const db = getDB(session.id);
     if (!db) return;
 
     const options = {
@@ -27,7 +28,8 @@ export function usePouchChanges(user, onUpdate, docType = null) {
 
     const changes = db.changes(options)
       .on('change', (info) => {
-        console.log(`🔔 DB Change detected [${docType || 'all'}]:`, info.id);
+        // console.log(`🔔 DB Change detected [${docType || 'all'}]:`, info.id);
+        console.log(`🔔 DB Change detected : ${docType}`);
         onUpdate();
       })
       .on('error', (err) => {
@@ -40,5 +42,5 @@ export function usePouchChanges(user, onUpdate, docType = null) {
         changes.cancel();
       }
     };
-  }, [user?.username, onUpdate, docType]);
+  }, [user?.id, onUpdate, docType]);
 }
