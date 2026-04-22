@@ -52,7 +52,7 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-950 dark:to-slate-900 px-4 py-6 transition-colors">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-muted px-4 py-6 transition-color">
 
       <div className="w-full max-w-md bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl rounded-3xl shadow-xl border border-white/40 dark:border-slate-700/40 p-6 space-y-5 transition-colors">
 
