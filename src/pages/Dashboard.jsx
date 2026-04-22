@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useAppData } from "@/lib/DataProvider";
 import { Link } from "react-router-dom";
 import {
@@ -25,16 +25,21 @@ import { getSavedTheme, applyTheme } from "@/utils/theme";
 export default function Dashboard() {
   const { user, hasFullAccess } = useAuth();
 
-  // ✅ GLOBAL DATA (FROM DATA PROVIDER)
+  // =============================
+  // GLOBAL DATA
+  // =============================
   const {
     tasks,
     teams,
     members,
     organizations,
     loading,
-    reload, // optional manual refresh
+    reload,
   } = useAppData();
 
+  // =============================
+  // LOCAL STATE
+  // =============================
   const [detailTask, setDetailTask] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState(null);
@@ -44,37 +49,65 @@ export default function Dashboard() {
     return saved ? saved === "dark" : false;
   });
 
-  // -----------------------------
-  // THEME (RUN ONCE)
-  // -----------------------------
+  // =============================
+  // THEME INIT (RUN ONCE)
+  // =============================
   useEffect(() => {
     const theme = getSavedTheme();
     setDarkMode(applyTheme(theme));
   }, []);
 
-  // -----------------------------
-  // FILTERS (UNCHANGED LOGIC)
-  // -----------------------------
-  const todayTasks = tasks.filter(
-    (t) =>
-      t.status === "today" ||
-      (t.due_date && isToday(new Date(t.due_date)))
-  );
+  // =============================
+  // SAFE DATA NORMALIZATION
+  // =============================
+  const safeTasks = useMemo(() => tasks ?? [], [tasks]);
+  const safeTeams = useMemo(() => teams ?? [], [teams]);
+  const safeMembers = useMemo(() => members ?? [], [members]);
+  const safeOrganizations = useMemo(() => organizations ?? [], [organizations]);
 
-  const upcomingTasks = tasks.filter(
-    (t) =>
-      t.status === "upcoming" &&
-      (!t.due_date || isFuture(new Date(t.due_date)))
-  );
+  // =============================
+  // DATE PRE-CALC (performance boost)
+  // =============================
+  const today = useMemo(() => new Date(), []);
 
-  const overdueTasks = tasks.filter(
-    (t) =>
-      t.status === "previous" ||
-      (t.due_date &&
-        isPast(new Date(t.due_date)) &&
-        t.status !== "completed" &&
-        !isToday(new Date(t.due_date)))
-  );
+  // =============================
+  // FILTERS (optimized + safe)
+  // =============================
+  const todayTasks = useMemo(() => {
+    return safeTasks.filter((t) => {
+      const due = t.due_date ? new Date(t.due_date) : null;
+
+      return (
+        t.status === "today" ||
+        (due && isToday(due))
+      );
+    });
+  }, [safeTasks]);
+
+  const upcomingTasks = useMemo(() => {
+    return safeTasks.filter((t) => {
+      const due = t.due_date ? new Date(t.due_date) : null;
+
+      return (
+        t.status === "upcoming" &&
+        (!due || isFuture(due))
+      );
+    });
+  }, [safeTasks]);
+
+  const overdueTasks = useMemo(() => {
+    return safeTasks.filter((t) => {
+      const due = t.due_date ? new Date(t.due_date) : null;
+
+      return (
+        t.status === "previous" ||
+        (due &&
+          isPast(due) &&
+          t.status !== "completed" &&
+          !isToday(due))
+      );
+    });
+  }, [safeTasks]);
 
   // -----------------------------
   // LOADING STATE

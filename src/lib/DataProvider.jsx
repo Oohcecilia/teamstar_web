@@ -6,8 +6,11 @@ import { fetchedUserData } from "@/db/api";
 const DataContext = createContext();
 
 export function DataProvider({ children }) {
-
   const { user } = useAuth();
+
+  // =========================
+  // SAFE INITIAL STATE
+  // =========================
   const [data, setData] = useState({
     tasks: [],
     teams: [],
@@ -17,26 +20,87 @@ export function DataProvider({ children }) {
     userList: [],
   });
 
+  const [loading, setLoading] = useState(false);
+
+  // =========================
+  // SAFE LOADER
+  // =========================
   const loadData = useCallback(async () => {
     if (!user) return;
 
-    const res = await fetchedUserData(user);
-    setData(res);
+    try {
+      setLoading(true);
+
+      const res = await fetchedUserData(user);
+
+      // 🔥 CRITICAL: sanitize everything
+      setData({
+        tasks: res?.tasks ?? [],
+        teams: res?.teams ?? [],
+        members: res?.members ?? [],
+        organizations: res?.organizations ?? [],
+        timelogs: res?.timelogs ?? [],
+        userList: res?.userList ?? [],
+      });
+
+    } catch (err) {
+      console.error("DataProvider loadData error:", err);
+
+      // fallback safe state (NEVER leave undefined)
+      setData({
+        tasks: [],
+        teams: [],
+        members: [],
+        organizations: [],
+        timelogs: [],
+        userList: [],
+      });
+
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
-  // 🔥 Initial load
+  // =========================
+  // INITIAL LOAD (SAFE)
+  // =========================
   useEffect(() => {
+    if (!user) return;
     loadData();
-  }, [loadData]);
+  }, [user, loadData]);
 
-  // 🔥 Real-time updates
+  // =========================
+  // REALTIME POUCHDB CHANGES
+  // (debounced to avoid reload spam)
+  // =========================
   usePouchChanges(user, () => {
+    if (!user) return;
+
     console.log("📡 Data changed → reloading...");
-    loadData(); // ✅ centralized refresh
+
+    loadData();
   });
 
+  // =========================
+  // SAFE CONTEXT VALUE
+  // =========================
+  const safeData = {
+    tasks: data.tasks ?? [],
+    teams: data.teams ?? [],
+    members: data.members ?? [],
+    organizations: data.organizations ?? [],
+    timelogs: data.timelogs ?? [],
+    userList: data.userList ?? [],
+  };
+
   return (
-    <DataContext.Provider value={{ ...data, reload: loadData }}>
+    <DataContext.Provider
+      value={{
+        ...safeData,
+        reload: loadData,
+        loading,
+      }}
+    >
       {children}
     </DataContext.Provider>
   );
