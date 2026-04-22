@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { useAuth } from "@/lib/AuthContext";
 import { getNotifications } from "@/db/api";
-import { usePouchChanges } from '@/hooks/usePouchChanges';
+import usePouchChanges from "@/hooks/usePouchChanges";
 import { getDB } from "@/db/couch";
 
 
@@ -63,7 +63,7 @@ const positionClass = {
 };
 
 export default function NotificationBell({ position = "right" }) {
-  const { user, setUser } = useAuth();
+  const { user } = useAuth();
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -96,7 +96,28 @@ export default function NotificationBell({ position = "right" }) {
   }, [user]);
 
 
-  usePouchChanges(user, load, 'notification');
+  usePouchChanges(user, (doc) => {
+    if (!doc) return;
+
+    setNotifications((prev) => {
+      const exists = prev.find(n => n._id === doc._id);
+
+      if (exists) {
+        // 🔁 update existing
+        return prev.map(n => n._id === doc._id ? doc : n);
+      } else {
+        // ➕ add new
+        return [doc, ...prev];
+      }
+    });
+
+    // 🔥 update unread count in real-time
+    setUnreadCount((prev) => {
+      const isUnread = !(doc.read || []).includes(user.id);
+      return isUnread ? prev + 1 : prev;
+    });
+
+  }, 'notification');
 
 
   // ----------------------------
@@ -116,15 +137,17 @@ export default function NotificationBell({ position = "right" }) {
     };
   }, [load]);
 
-  useEffect(() => {
-    if (!shouldReload) return;
+  // useEffect(() => {
+  //   if (!shouldReload) return;
 
-    const timer = setTimeout(() => {
-      window.location.reload();
-    }, 3000);
+  //   const timer = setTimeout(() => {
+  //     window.location.reload();
+  //   }, 3000);
 
-    return () => clearTimeout(timer);
-  }, [shouldReload]);
+  //   return () => clearTimeout(timer);
+  // }, [shouldReload]);
+
+
 
   // ----------------------------
   // OUTSIDE CLICK CLOSE
@@ -147,18 +170,32 @@ export default function NotificationBell({ position = "right" }) {
       const db = getDB(user?.id);
       if (!db) return;
 
+      // =========================
       // 1. UPDATE USER PERMISSIONS
-      // Fetch fresh to get current _rev
+      // =========================
       const targetUser = await db.get(notif.user_id);
 
-      const currentAccess = Array.isArray(targetUser.access_rights) ? targetUser.access_rights : [];
-      const exists = currentAccess.find((a) => a.org_id === notif.org_id);
+      const currentAccess = Array.isArray(targetUser.access_rights)
+        ? targetUser.access_rights
+        : [];
+
+      const exists = currentAccess.find(
+        (a) => a.org_id === notif.org_id
+      );
 
       const updatedAccess = exists
         ? currentAccess.map((a) =>
-          a.org_id === notif.org_id ? { ...a, role: notif.role || "member" } : a
+          a.org_id === notif.org_id
+            ? { ...a, role: notif.role || "member" }
+            : a
         )
-        : [...currentAccess, { org_id: notif.org_id, role: notif.role || "member" }];
+        : [
+          ...currentAccess,
+          {
+            org_id: notif.org_id,
+            role: notif.role || "member",
+          },
+        ];
 
       const updatedUser = {
         ...targetUser,
@@ -168,32 +205,55 @@ export default function NotificationBell({ position = "right" }) {
 
       await db.put(updatedUser);
 
-      // 2. UPDATE GLOBAL STATE (If it's the current user)
+      // update session if current user
       if (notif.user_id === user?.id) {
-        setUser({ ...updatedUser });
         sessionStorage.setItem("user", JSON.stringify(updatedUser));
       }
 
-      // 3. UPDATE NOTIFICATION STATUS
-      // Fetch fresh to get current _rev (avoids conflicts if background sync happened)
+      // =========================
+      // 2. UPDATE NOTIFICATION
+      // =========================
       const freshNotif = await db.get(notif._id);
-      const readList = Array.isArray(freshNotif.read) ? freshNotif.read : [];
+
+      const readList = Array.isArray(freshNotif.read)
+        ? freshNotif.read
+        : [];
+
+      const updatedRead = readList.includes(user?.id)
+        ? readList
+        : [...readList, user?.id];
 
       const updatedNotif = {
         ...freshNotif,
         status: "accepted",
-        read: readList.includes(user.id) ? readList : [...readList, user.id],
+        read: updatedRead,
         updated_at: new Date().toISOString(),
       };
 
       await db.put(updatedNotif);
 
-      setShouldReload?.(true);
+      // =========================
+      // 3. UPDATE UI STATE (IMPORTANT)
+      // =========================
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n._id === notif._id
+            ? {
+              ...n,
+              status: "accepted",
+              read: updatedRead,
+            }
+            : n
+        )
+      );
 
+      // optional: keep unread count consistent
+      setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
       console.error("❌ Accept invitation failed:", err);
     }
   };
+
 
   const rejectInvitation = async (notif) => {
     try {
@@ -408,15 +468,16 @@ export default function NotificationBell({ position = "right" }) {
                       {isInvitation && (
                         <div className="flex gap-2 mt-2">
 
+                          {/* ACCEPT */}
                           <button
-                            disabled={isProcessed}
+                            disabled={n.status === "accepted" || n.status === "rejected"}
                             onClick={(e) => {
                               e.stopPropagation();
                               acceptInvitation(n);
                             }}
                             className={cn(
-                              "text-[10px] px-2 py-1 rounded-md text-white",
-                              isProcessed
+                              "text-[10px] px-2 py-1 rounded-md text-white transition",
+                              n.status === "accepted" || n.status === "rejected"
                                 ? "bg-gray-400 cursor-not-allowed"
                                 : "bg-green-500 hover:bg-green-600"
                             )}
@@ -424,21 +485,23 @@ export default function NotificationBell({ position = "right" }) {
                             {n.status === "accepted" ? "Accepted" : "Accept"}
                           </button>
 
+                          {/* REJECT */}
                           <button
-                            disabled={isProcessed}
+                            disabled={n.status === "accepted" || n.status === "rejected"}
                             onClick={(e) => {
                               e.stopPropagation();
                               rejectInvitation(n);
                             }}
                             className={cn(
-                              "text-[10px] px-2 py-1 rounded-md text-white",
-                              isProcessed
+                              "text-[10px] px-2 py-1 rounded-md text-white transition",
+                               n.status === "accepted" || n.status === "rejected"
                                 ? "bg-gray-400 cursor-not-allowed"
                                 : "bg-red-500 hover:bg-red-600"
                             )}
                           >
                             {n.status === "rejected" ? "Cancelled" : "Cancel"}
                           </button>
+
                         </div>
                       )}
                     </div>

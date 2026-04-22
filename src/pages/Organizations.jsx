@@ -1,28 +1,54 @@
 import { useState, useEffect } from "react";
-import { Plus, Building2, Users, Trash2 } from "lucide-react";
+import { useAppData } from "@/lib/DataProvider";
+import { useAuth } from "@/lib/AuthContext";
+
+import {
+  Plus,
+  Building2,
+  Users,
+  Trash2,
+} from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription
 } from "@/components/ui/dialog";
+
 import EmptyState from "../components/EmptyState";
-import { useAuth } from "@/lib/AuthContext";
-import { fetchedUserData } from "@/db/api";
-import { getDB } from "@/db/couch";
+
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
-  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
+import { getDB } from "@/db/couch";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
 
 export default function Organizations() {
   const { user, setUser } = useAuth();
 
-  const [organizations, setOrganizations] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // ✅ GLOBAL REAL-TIME DATA
+  const {
+    organizations,
+    teams,
+    loading,
+    reload,
+  } = useAppData();
+
   const [showForm, setShowForm] = useState(false);
   const [editOrg, setEditOrg] = useState(null);
   const [deleteOrg, setDeleteOrg] = useState(null);
@@ -38,32 +64,12 @@ export default function Organizations() {
   });
 
   // -------------------------
-  // LOAD DATA
+  // THEME
   // -------------------------
-  const loadData = async () => {
-    if (!user) return;
-
-    setLoading(true);
-    try {
-      const res = await fetchedUserData(user);
-
-      setOrganizations(res?.organizations ?? []);
-      setTeams(res?.teams ?? []);
-      
-    } catch (err) {
-      console.error("Load organizations error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-
     const theme = getSavedTheme();
     setDarkMode(applyTheme(theme));
-
-    loadData();
-  }, [user]);
+  }, []);
 
   // -------------------------
   // OPEN MODALS
@@ -84,38 +90,35 @@ export default function Organizations() {
   };
 
   // -------------------------
-  // SAVE
+  // SAVE (CREATE / UPDATE)
   // -------------------------
-const handleSave = async (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
 
     const db = getDB(user?.id);
     if (!db) return;
 
     try {
-      let orgIdToRefresh = null;
-
       // =========================
-      // UPDATE EXISTING
+      // UPDATE
       // =========================
       if (editOrg?._id) {
-        // In PouchDB, we fetch the latest to get the current _rev
         const existing = await db.get(editOrg._id);
 
         await db.put({
-          ...existing, // contains _id and _rev
+          ...existing,
           name: form.name,
           description: form.description || "",
           updated_at: new Date().toISOString(),
         });
-        orgIdToRefresh = editOrg._id;
       }
 
       // =========================
-      // CREATE NEW
+      // CREATE
       // =========================
       else {
-        const newOrgId = `org_${generate(12)}`; // Assuming you use nanoid/generate
+        const newOrgId = `org_${crypto.randomUUID()}`;
+
         const newOrg = {
           _id: newOrgId,
           type: "organization",
@@ -125,16 +128,14 @@ const handleSave = async (e) => {
         };
 
         await db.put(newOrg);
-        orgIdToRefresh = newOrgId;
 
-        // --- UPDATE USER PERMISSIONS ---
-        // We must update the User doc so the UI knows they have access to this new org
-        const currentUserDoc = await db.get(user.id);
+        // 🔥 update user access rights
+        const userDoc = await db.get(user.id);
 
         const updatedUser = {
-          ...currentUserDoc,
+          ...userDoc,
           access_rights: [
-            ...(currentUserDoc.access_rights || []),
+            ...(userDoc.access_rights || []),
             {
               org_id: newOrgId,
               role: "owner",
@@ -144,35 +145,35 @@ const handleSave = async (e) => {
 
         await db.put(updatedUser);
 
-        // Update Global Auth State & Session
-        setUser?.(updatedUser);
+        setUser(updatedUser);
         sessionStorage.setItem("user", JSON.stringify(updatedUser));
       }
 
       setShowForm(false);
-      // loadData() will be triggered automatically if you use the usePouchChanges hook!
-      loadData(); 
+
+      // ✅ optional manual refresh (fallback)
+      reload?.();
     } catch (err) {
       console.error("❌ Save organization error:", err);
     }
   };
 
-  // =========================
+  // -------------------------
   // DELETE
-  // =========================
+  // -------------------------
   const handleDelete = async () => {
     if (!deleteOrg) return;
 
     try {
       const db = getDB(user?.id);
-      
-      // PouchDB delete needs the _id AND the current _rev
-      // You can either pass the doc you already have or fetch it fresh
-      const docToDelete = await db.get(deleteOrg._id);
-      await db.remove(docToDelete);
+      const doc = await db.get(deleteOrg._id);
+
+      await db.remove(doc);
 
       setDeleteOrg(null);
-      loadData();
+
+      // optional fallback
+      reload?.();
     } catch (err) {
       console.error("❌ Delete organization error:", err);
     }
@@ -210,7 +211,7 @@ const handleSave = async (e) => {
         </Button>
       </div>
 
-      {/* EMPTY */}
+      {/* EMPTY STATE */}
       {organizations.length === 0 ? (
         <EmptyState
           icon={Building2}
@@ -229,30 +230,28 @@ const handleSave = async (e) => {
               <div
                 key={org._id}
                 onClick={() => openEdit(org)}
-                className="bg-card border border-border rounded-2xl p-5 cursor-pointer transition-all hover:shadow-lg hover:shadow-primary/5 hover:border-primary/20 group relative"
+                className="bg-card border rounded-2xl p-5 cursor-pointer hover:shadow-lg relative group"
               >
+                {/* DELETE */}
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setDeleteOrg(org);
                   }}
-                  className="absolute top-4 right-4
-                            p-1.5 rounded-lg
-                            bg-destructive/10
-                            text-destructive
-                            opacity-70 hover:opacity-100
-                            transition"
+                  className="absolute top-3 right-3 p-1.5 rounded-lg bg-destructive/10 text-destructive"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
 
-
+                {/* CONTENT */}
                 <div className="flex items-center gap-3">
                   <Building2 className="h-5 w-5 text-primary" />
                   <div>
-                    <h3 className="font-semibold text-sm">{org.name}</h3>
-                    <p className="text-xs text-muted-foreground">
-                      <Users className="h-3 w-3 inline mr-1" />
+                    <h3 className="font-semibold text-sm">
+                      {org.name}
+                    </h3>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Users className="h-3 w-3" />
                       {orgTeams.length} team
                       {orgTeams.length !== 1 ? "s" : ""}
                     </p>
@@ -277,39 +276,74 @@ const handleSave = async (e) => {
             <DialogTitle>
               {editOrg ? "Edit Organization" : "New Organization"}
             </DialogTitle>
+            <DialogDescription>
+              Create a new organization or update existing team details.
+            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSave} className="space-y-4">
             <div>
               <Label>Name *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="Organization name..." />
+              <Input
+                value={form.name}
+                onChange={(e) =>
+                  setForm({ ...form, name: e.target.value })
+                }
+                required
+              />
             </div>
+
             <div>
               <Label>Description</Label>
-              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Description..." rows={3} />
+              <Textarea
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+              />
             </div>
-            <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setShowForm(false)} className="flex-1">Cancel</Button>
-              <Button type="submit" disabled={!form.name} className="flex-1">{editOrg ? "Update" : "Create"}</Button>
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowForm(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+
+              <Button type="submit" className="flex-1">
+                {editOrg ? "Update" : "Create"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
       {/* DELETE */}
-      <AlertDialog open={!!deleteOrg} onOpenChange={() => setDeleteOrg(null)}>
+      <AlertDialog
+        open={!!deleteOrg}
+        onOpenChange={() => setDeleteOrg(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Organization</AlertDialogTitle>
-            <AlertDialogDescription>Are you sure you want to delete "{deleteOrg?.name}"?</AlertDialogDescription>
+            <AlertDialogTitle>
+              Delete Organization
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteOrg?.name}"?
+            </AlertDialogDescription>
           </AlertDialogHeader>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Delete</AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete}>
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }

@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { UserCircle, Phone, Users, Shield, UserPlus, Loader2, Settings2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import EmptyState from "../components/EmptyState";
-import { fetchedUserData } from "@/db/api";
+import { useAppData } from "@/lib/DataProvider";
 import { useAuth } from "@/lib/AuthContext";
 import { createNotification } from "@/db/notification";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
@@ -24,24 +24,24 @@ const ROLE_STYLE = {
 };
 
 export default function Members() {
-  const { isAuthenticated, user, hasFullAccess } = useAuth();
+  const { user } = useAuth();
 
-  const [members, setMembers] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // ✅ GLOBAL REAL-TIME DATA
+  const {
+    members,
+    teams,
+    organizations,
+    userList,
+    loading,
+  } = useAppData();
 
   const [accessMember, setAccessMember] = useState(null);
 
-  const [selectedUserId, setSelectedUserId] = useState("");
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("member");
-  const [inviting, setInviting] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState(false);
-  const [organizations, setOrganizations] = useState([]);
+  const [inviting, setInviting] = useState(false);
 
-
+  const [selectedUserId, setSelectedUserId] = useState("");
   const [selectedOrg, setSelectedOrg] = useState("");
   const [phoneQuery, setPhoneQuery] = useState("");
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false);
@@ -51,86 +51,62 @@ export default function Members() {
     return saved ? saved === "dark" : false;
   });
 
-
-
-  // =========================
-  // LOAD DATA (PouchDB)
-  // =========================
-  const load = async () => {
-    setLoading(true);
-
-    try {
-      const res = await fetchedUserData(user);
-
-      setMembers(res.members ?? []);
-
-      setTeams(res.teams ?? []);
-
-      setOrganizations(res.organizations ?? []);
-
-      setUsers(res.userList ?? []);
-
-    } catch (err) {
-      console.error("Load members error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // -------------------------
+  // THEME
+  // -------------------------
   useEffect(() => {
     const theme = getSavedTheme();
     setDarkMode(applyTheme(theme));
+  }, []);
 
-    load();
-  }, [user]);
+  // -------------------------
+  // FILTER USERS (MEMORY OPTIMIZED)
+  // -------------------------
+  const filteredUsers = useMemo(() => {
+    return (userList ?? []).filter((u) =>
+      (u.phone || "")
+        .toLowerCase()
+        .includes(phoneQuery.toLowerCase())
+    );
+  }, [userList, phoneQuery]);
 
+  const currentUser = members.find((m) => m._id === user?.id);
+  const otherMembers = members.filter((m) => m._id !== user?.id);
 
-  const filteredUsers = users.filter((u) =>
-    (u.phone || "")
-      .toLowerCase()
-      .includes(phoneQuery.toLowerCase())
-  );
-
-  const currentUser = members.find(m => m._id === user?.id);
-  const otherMembers = members.filter(m => m._id !== user?.id);
-
-
-  // =========================
-  // INVITE (PouchDB fallback safe)
-  // =========================
+  // -------------------------
+  // INVITE USER
+  // -------------------------
   const handleInvite = async (e) => {
     e.preventDefault();
     setInviting(true);
 
-    const selectedOrgName = organizations.find(org => org._id === selectedOrg)?.name || "";
+    const selectedOrgName =
+      organizations.find((o) => o._id === selectedOrg)?.name || "";
 
     try {
-      const payload = {
-        type: "invitation",
-        title: "Invitation Received",
-        message: `${user?.id || "Someone"} invited you to join ${selectedOrgName}.`,
-        org_id: selectedOrg,
-        user_id: selectedUserId,
-        role: '',
-        created_by: user?.id,
-      };
-
-      await createNotification(payload, user?.id);
+      await createNotification(
+        {
+          type: "invitation",
+          title: "Invitation Received",
+          message: `${user?.id} invited you to join ${selectedOrgName}.`,
+          org_id: selectedOrg,
+          user_id: selectedUserId,
+          created_by: user?.id,
+        },
+        user?.id
+      );
 
       setInviteSuccess(true);
-
-      // reset form
-      setPhoneQuery("");
-      setSelectedUserId("");
-      setSelectedOrg("");
-      setInviteRole("member");
-      setShowPhoneDropdown(false);
 
       setTimeout(() => {
         setInviteSuccess(false);
         setShowInvite(false);
-      }, 1500);
+      }, 1200);
 
+      setPhoneQuery("");
+      setSelectedUserId("");
+      setSelectedOrg("");
+      setShowPhoneDropdown(false);
     } catch (err) {
       console.error("Invite error:", err);
     } finally {
@@ -138,9 +114,9 @@ export default function Members() {
     }
   };
 
-  // =========================
-  // LOADING UI
-  // =========================
+  // -------------------------
+  // LOADING
+  // -------------------------
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -149,9 +125,9 @@ export default function Members() {
     );
   }
 
-  // =========================
-  // TEAM LOOKUP MAP
-  // =========================
+  // -------------------------
+  // TEAM MAP
+  // -------------------------
   const teamMap = Object.fromEntries(
     (teams || []).map((t) => [t._id, t])
   );
@@ -162,22 +138,19 @@ export default function Members() {
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            Members
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h1 className="text-2xl font-bold">Members</h1>
+          <p className="text-sm text-muted-foreground">
             {members.length} members
           </p>
         </div>
-        {hasFullAccess && (
-          <Button onClick={() => setShowInvite(true)}>
-            <UserPlus className="h-4 w-4 mr-2" />
-            Invite
-          </Button>
-        )}
+
+        <Button onClick={() => setShowInvite(true)}>
+          <UserPlus className="h-4 w-4 mr-2" />
+          Invite
+        </Button>
       </div>
 
-      {/* LIST */}
+      {/* EMPTY */}
       {members.length === 0 ? (
         <EmptyState
           icon={UserCircle}
@@ -186,81 +159,81 @@ export default function Members() {
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[currentUser, ...otherMembers].filter(Boolean).map((member) => {
-            const memberTeams = (member.team_ids || [])
-              .map((id) => teamMap[id])
-              .filter(Boolean);
-            const memberName = `${member.first_name}  ${member.last_name}`;
+          {[currentUser, ...otherMembers]
+            .filter(Boolean)
+            .map((member) => {
+              const memberTeams = (member.team_ids || [])
+                .map((id) => teamMap[id])
+                .filter(Boolean);
 
-            return (
-              <div
-                key={member._id}
-                className="bg-card border rounded-2xl p-5"
-              >
-                {/* USER INFO */}
-                <div className="flex items-center gap-3">
-                  <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <span className="text-sm font-bold text-primary">
-                      {(member.first_name || member.phone || "?")
-                        .charAt(0)
-                        .toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-sm truncate">
-                      {memberName || "Unnamed"}
-                      {member._id === user?.id && (
-                        <span className="ml-1 text-primary text-[10px]">(You)</span>
-                      )}
-                    </h3>
-
-                    <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
-                      <Phone className="h-3.5 w-3.5" />
-                      {member.phone}
-                    </p>
-                  </div>
-                </div>
-
-                {/* TEAMS */}
-                {memberTeams.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {memberTeams.map((t) => (
-                      <Badge
-                        key={t._id}
-                        variant="secondary"
-                        className="text-[10px]"
-                      >
-                        {t.name}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full mt-4 rounded-lg text-xs h-8"
-                  onClick={() => setAccessMember(member)}
+              return (
+                <div
+                  key={member._id}
+                  className="bg-card border rounded-2xl p-5"
                 >
-                  <Settings2 className="h-3.5 w-3.5 mr-1.5" />
-                  Manage Access
-                </Button>
-              </div>
-            );
-          })}
+                  {/* USER */}
+                  <div className="flex items-center gap-3">
+                    <div className="h-11 w-11 rounded-xl bg-primary/10 flex items-center justify-center">
+                      <span className="text-sm font-bold text-primary">
+                        {(member.first_name || member.phone || "?")
+                          .charAt(0)
+                          .toUpperCase()}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 className="font-semibold text-sm">
+                        {member.first_name} {member.last_name}
+                        {member._id === user?.id && (
+                          <span className="ml-1 text-primary text-[10px]">
+                            (You)
+                          </span>
+                        )}
+                      </h3>
+
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {member.phone}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* TEAMS */}
+                  {memberTeams.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {memberTeams.map((t) => (
+                        <Badge
+                          key={t._id}
+                          variant="secondary"
+                          className="text-[10px]"
+                        >
+                          {t.name}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full mt-4"
+                    onClick={() => setAccessMember(member)}
+                  >
+                    <Settings2 className="h-3.5 w-3.5 mr-1.5" />
+                    Manage Access
+                  </Button>
+                </div>
+              );
+            })}
         </div>
       )}
 
-      {/* Access Dialog */}
+      {/* ACCESS DIALOG */}
       {accessMember && (
         <MemberAccessDialog
           open={true}
           onOpenChange={(v) => {
-            if (!v) {
-              setAccessMember(null);
-              load();
-            }
+            if (!v) setAccessMember(null);
           }}
           member={accessMember}
           teams={teams}
@@ -268,96 +241,92 @@ export default function Members() {
         />
       )}
 
-      {/* =========================
-          INVITE DIALOG (FIXED)
-      ========================= */}
+      {/* INVITE DIALOG */}
       <Dialog open={showInvite} onOpenChange={setShowInvite}>
         <DialogContent className="max-w-sm">
 
           <DialogHeader>
             <DialogTitle>Invite Member</DialogTitle>
             <DialogDescription>
-              Send an invitation to add a new member.
+              Send invitation to a user.
             </DialogDescription>
           </DialogHeader>
 
           {inviteSuccess ? (
             <div className="py-6 text-center">
-              <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-                <UserPlus className="h-5 w-5 text-emerald-600" />
-              </div>
-              <p className="text-sm font-medium">
-                Invitation sent!
-              </p>
+              <UserPlus className="mx-auto mb-2 text-emerald-500" />
+              <p>Invitation sent!</p>
             </div>
           ) : (
-            <form onSubmit={handleInvite} className="space-y-4 mt-2">
+            <form onSubmit={handleInvite} className="space-y-4">
 
-              <div className="relative">
-                <Label>Phone Number *</Label>
-
-                <Input
-                  type="number"
-                  value={phoneQuery}
-                  onChange={(e) => {
-                    setPhoneQuery(e.target.value);
-                    setShowPhoneDropdown(true);
-                    setSelectedUserId(""); // reset selection when typing
-                  }}
-                  onFocus={() => setShowPhoneDropdown(true)}
-                  placeholder="Search phone number..."
-                  required
-                  className="
-                      bg-white text-gray-900 border-gray-300
-                      dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700
-                      placeholder:text-gray-400 dark:placeholder:text-gray-500
-                      focus-visible:ring-2 focus-visible:ring-blue-500
-                    "
-                />
-
-                {showPhoneDropdown && phoneQuery && (
-                  <div className="
-                    absolute z-50 mt-1 w-full
-                    bg-white border rounded-md shadow max-h-40 overflow-y-auto
-                    dark:bg-gray-900 dark:border-gray-700
-                  ">
-                    {filteredUsers.length > 0 ? (
-                      filteredUsers.map((u) => (
-                        <div
-                          key={u.user_id}
-                          className="
-                            px-3 py-2 text-sm cursor-pointer
-                            text-gray-900 hover:bg-gray-100
-                            dark:text-gray-100 dark:hover:bg-gray-800
-                          "
-                          onClick={() => {
-                            setPhoneQuery(u.phone);       // show phone
-                            setSelectedUserId(u.user_id); // store ID
-                            setShowPhoneDropdown(false);
-                          }}
-                        >
-                          {u.phone} - {u.first_name}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="
-                        px-3 py-2 text-sm
-                        text-gray-400
-                        dark:text-gray-500
-                      ">
-                        No phone number found
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
+              {/* PHONE SEARCH */}
               <div>
-                <Label>Organization *</Label>
+                <Label>Phone</Label>
+                <div className="relative">
+                  <Input
+                    type="number"
+                    value={phoneQuery}
+                    onChange={(e) => {
+                      setPhoneQuery(e.target.value);
+                      setShowPhoneDropdown(true);
+                      setSelectedUserId(""); // reset selection when typing
+                    }}
+                    onFocus={() => setShowPhoneDropdown(true)}
+                    placeholder="Search phone number..."
+                    required
+                    className="
+      bg-white text-gray-900 border-gray-300
+      dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700
+      placeholder:text-gray-400 dark:placeholder:text-gray-500
+      focus-visible:ring-2 focus-visible:ring-blue-500
+    "
+                  />
 
-                <Select value={selectedOrg} onValueChange={setSelectedOrg}>
+                  {showPhoneDropdown && phoneQuery && (
+                    <div
+                      className="
+        absolute z-50 mt-1 w-full
+        bg-white border rounded-md shadow max-h-40 overflow-y-auto
+        dark:bg-gray-900 dark:border-gray-700
+      "
+                    >
+                      {filteredUsers.length > 0 ? (
+                        filteredUsers.map((u) => (
+                          <div
+                            key={u.user_id}
+                            className="
+              px-3 py-2 text-sm cursor-pointer
+              text-gray-900 hover:bg-gray-100
+              dark:text-gray-100 dark:hover:bg-gray-800
+            "
+                            onClick={() => {
+                              setPhoneQuery(u.phone);
+                              setSelectedUserId(u.user_id);
+                              setShowPhoneDropdown(false);
+                            }}
+                          >
+                            {u.phone} - {u.first_name}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-gray-400 dark:text-gray-500">
+                          No phone number found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>              </div>
+
+              {/* ORG */}
+              <div>
+                <Label>Organization</Label>
+                <Select
+                  value={selectedOrg}
+                  onValueChange={setSelectedOrg}
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select organization" />
+                    <SelectValue placeholder="Select org" />
                   </SelectTrigger>
 
                   <SelectContent>
@@ -370,30 +339,19 @@ export default function Members() {
                 </Select>
               </div>
 
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => setShowInvite(false)}
-                >
-                  Cancel
-                </Button>
-
-                <Button
-                  type="submit"
-                  className="flex-1"
-                  disabled={inviting || !selectedUserId || !selectedOrg || !inviteRole}
-                >
-                  {inviting ? "Sending..." : "Send Invite"}
-                </Button>
-              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={!selectedUserId || !selectedOrg || inviting}
+              >
+                {inviting ? "Sending..." : "Send Invite"}
+              </Button>
 
             </form>
           )}
         </DialogContent>
-      </Dialog>
+      </Dialog >
 
-    </div>
+    </div >
   );
 }

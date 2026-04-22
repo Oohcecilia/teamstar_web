@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchedUserData } from "@/db/api";
+import { useAppData } from "@/lib/DataProvider";
 import { useAuth } from "@/lib/AuthContext";
 import { cn } from "@/lib/utils";
 import { getSavedTheme, applyTheme } from "@/utils/theme";
@@ -22,49 +22,38 @@ import {
 import TaskFormDialog from "../components/TaskFormDialog";
 
 export default function CalendarPage() {
-  const { isAuthenticated, user, activeOrgId } = useAuth();
-  const [tasks, setTasks] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [organizations, setOrganizations] = useState([]);
+  const { user } = useAuth();
+
+  // ✅ ALL DATA COMES FROM CENTRAL PROVIDER
+  const {
+    tasks,
+    teams,
+    members,
+    organizations,
+    loading,
+  } = useAppData();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(null);
 
-  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState(null);
-
   const [detailTask, setDetailTask] = useState(null);
-
 
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem("theme");
     return saved ? saved === "dark" : false;
   });
 
-  const loadData = async () => {
-    setLoading(true);
-
-    const res = await fetchedUserData(user);
-
-    setTasks(res?.tasks || []);
-    setTeams(res?.teams || []);
-    setMembers(res?.members || []);
-    setOrganizations(res?.organizations?.flat?.() ?? []);
-
-    setLoading(false);
-  };
-
+  // theme
   useEffect(() => {
-    if (!user) return;
-
     const theme = getSavedTheme();
     setDarkMode(applyTheme(theme));
+  }, []);
 
-    loadData(); // 🔥 safe initial load
-  }, [user]);
-
+  // -----------------------------
+  // CALENDAR DAYS
+  // -----------------------------
   const days = useMemo(() => {
     const start = startOfWeek(startOfMonth(currentMonth), {
       weekStartsOn: 1,
@@ -84,11 +73,12 @@ export default function CalendarPage() {
     return result;
   }, [currentMonth]);
 
+  // -----------------------------
+  // TASK HELPERS
+  // -----------------------------
   const getTasksForDate = (date) =>
     tasks.filter(
-      (t) =>
-        t.due_date &&
-        isSameDay(new Date(t.due_date), date)
+      (t) => t.due_date && isSameDay(new Date(t.due_date), date)
     );
 
   const selectedTasks = selectedDate
@@ -101,6 +91,9 @@ export default function CalendarPage() {
     low: "bg-emerald-500",
   };
 
+  // -----------------------------
+  // LOADING
+  // -----------------------------
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -109,8 +102,12 @@ export default function CalendarPage() {
     );
   }
 
+  // -----------------------------
+  // UI
+  // -----------------------------
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
           Calendar
@@ -120,15 +117,15 @@ export default function CalendarPage() {
         </p>
       </div>
 
+      {/* CALENDAR */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        {/* Header */}
+
+        {/* HEADER */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() =>
-              setCurrentMonth(subMonths(currentMonth, 1))
-            }
+            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
@@ -140,36 +137,30 @@ export default function CalendarPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() =>
-              setCurrentMonth(addMonths(currentMonth, 1))
-            }
+            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
 
-        {/* Day headers */}
+        {/* DAYS HEADER */}
         <div className="grid grid-cols-7 border-b border-border">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(
-            (d) => (
-              <div
-                key={d}
-                className="text-xs font-medium text-muted-foreground text-center py-2"
-              >
-                {d}
-              </div>
-            )
-          )}
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+            <div
+              key={d}
+              className="text-xs font-medium text-muted-foreground text-center py-2"
+            >
+              {d}
+            </div>
+          ))}
         </div>
 
-        {/* Days grid */}
+        {/* GRID */}
         <div className="grid grid-cols-7">
           {days.map((day, idx) => {
             const dayTasks = getTasksForDate(day);
-
             const isSelected =
-              selectedDate &&
-              isSameDay(day, selectedDate);
+              selectedDate && isSameDay(day, selectedDate);
 
             return (
               <button
@@ -177,18 +168,15 @@ export default function CalendarPage() {
                 onClick={() => setSelectedDate(day)}
                 className={cn(
                   "min-h-[60px] md:min-h-[80px] p-1.5 border-b border-r border-border text-left transition-all relative",
-                  !isSameMonth(day, currentMonth) &&
-                  "opacity-30",
-                  isSelected &&
-                  "bg-primary/5 ring-2 ring-primary ring-inset",
+                  !isSameMonth(day, currentMonth) && "opacity-30",
+                  isSelected && "bg-primary/5 ring-2 ring-primary ring-inset",
                   isToday(day) && "bg-primary/5"
                 )}
               >
                 <span
                   className={cn(
                     "text-xs font-medium inline-flex h-6 w-6 items-center justify-center rounded-full",
-                    isToday(day) &&
-                    "bg-primary text-primary-foreground"
+                    isToday(day) && "bg-primary text-primary-foreground"
                   )}
                 >
                   {format(day, "d")}
@@ -218,37 +206,29 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Selected date tasks */}
+      {/* SELECTED TASKS */}
       {selectedDate && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">
-              Tasks for {format(selectedDate, "MMMM d, yyyy")}
-            </h3>
-
-            <span className="text-xs text-muted-foreground">
-              {selectedTasks.length} task
-              {selectedTasks.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+          <h3 className="text-sm font-semibold">
+            Tasks for {format(selectedDate, "MMMM d, yyyy")}
+          </h3>
 
           {selectedTasks.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-4 text-center">
+            <p className="text-xs text-muted-foreground text-center py-4">
               No tasks for this date
             </p>
           ) : (
             <div className="space-y-2">
               {selectedTasks.map((task) => (
                 <div
-                  key={task._id} // also fix this
+                  key={task._id}
                   onClick={() => setDetailTask(task)}
                   className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:shadow-md transition-all flex items-center gap-3"
                 >
                   <div
                     className={cn(
                       "h-2 w-2 rounded-full",
-                      priorityDot[task.priority] ||
-                      "bg-primary"
+                      priorityDot[task.priority] || "bg-primary"
                     )}
                   />
 
@@ -256,25 +236,9 @@ export default function CalendarPage() {
                     <p className="text-sm font-medium truncate">
                       {task.title}
                     </p>
-
-                    {task.due_date && (
-                      <p className="text-xs text-muted-foreground">
-                        {format(
-                          new Date(task.due_date),
-                          "h:mm a"
-                        )}
-                      </p>
-                    )}
                   </div>
 
-                  <span
-                    className={cn(
-                      "text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap",
-                      task.status === "completed"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                        : "bg-primary/10 text-primary"
-                    )}
-                  >
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                     {task.status}
                   </span>
                 </div>
@@ -284,12 +248,17 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* DIALOGS */}
       <TaskDetailDialog
         open={!!detailTask}
-        onOpenChange={(v) => { if (!v) setDetailTask(null); }}
+        onOpenChange={(v) => !v && setDetailTask(null)}
         task={detailTask}
         members={members}
-        onEdit={(t) => { setDetailTask(null); setEditTask(t); setShowForm(true); }}
+        onEdit={(t) => {
+          setDetailTask(null);
+          setEditTask(t);
+          setShowForm(true);
+        }}
       />
 
       <TaskFormDialog
@@ -299,7 +268,6 @@ export default function CalendarPage() {
         teams={teams}
         members={members}
         organizations={organizations}
-        onSaved={loadData}
       />
     </div>
   );

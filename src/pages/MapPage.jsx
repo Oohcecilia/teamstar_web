@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { useAppData } from "@/lib/DataProvider";
 import { MapPin } from "lucide-react";
 import EmptyState from "../components/EmptyState";
 import TaskFormDialog from "../components/TaskFormDialog";
@@ -21,12 +22,16 @@ L.Icon.Default.mergeOptions({
 
 export default function MapPage() {
   const { user } = useAuth();
-  const [tasks, setTasks] = useState([]);
-  const [teams, setTeams] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [organizations, setOrganizations] = useState([]);
 
-  const [loading, setLoading] = useState(true);
+  // ✅ GLOBAL SYNCED DATA (NO FETCHING HERE)
+  const {
+    tasks,
+    teams,
+    members,
+    organizations,
+    loading,
+  } = useAppData();
+
   const [showForm, setShowForm] = useState(false);
   const [editTask, setEditTask] = useState(null);
 
@@ -35,48 +40,36 @@ export default function MapPage() {
     return saved ? saved === "dark" : false;
   });
 
-  const loadData = async () => {
-    setLoading(true);
-
-    try {
-      const data = await fetchedUserData(user);
-
-      setTasks(data.tasks ?? []);
-      setTeams(data.teams ?? []);
-      setMembers(data.members ?? []);
-      setOrganizations(data.organizations ?? []);
-
-
-    } catch (err) {
-      console.error("Map load error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // theme
   useEffect(() => {
     const theme = getSavedTheme();
     setDarkMode(applyTheme(theme));
-
-    loadData();
   }, []);
 
-  const locatedTasks = tasks.filter(
-    (t) =>
-      t.latitude != null &&
-      t.longitude != null &&
-      !isNaN(t.latitude) &&
-      !isNaN(t.longitude)
-  );
+  // -----------------------------
+  // FILTER LOCATED TASKS
+  // -----------------------------
+  const locatedTasks = useMemo(() => {
+    return (tasks ?? []).filter(
+      (t) =>
+        t.latitude != null &&
+        t.longitude != null &&
+        !isNaN(t.latitude) &&
+        !isNaN(t.longitude)
+    );
+  }, [tasks]);
 
   const center =
     locatedTasks.length > 0
       ? [
-        Number(locatedTasks[0].latitude),
-        Number(locatedTasks[0].longitude),
-      ]
-      : [14.5995, 120.9842]; // Manila default (better for your location)
+          Number(locatedTasks[0].latitude),
+          Number(locatedTasks[0].longitude),
+        ]
+      : [14.5995, 120.9842]; // Manila fallback
 
+  // -----------------------------
+  // LOADING
+  // -----------------------------
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -87,6 +80,8 @@ export default function MapPage() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
+
+      {/* HEADER */}
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
           Location
@@ -96,6 +91,7 @@ export default function MapPage() {
         </p>
       </div>
 
+      {/* EMPTY STATE */}
       {locatedTasks.length === 0 ? (
         <EmptyState
           icon={MapPin}
@@ -120,7 +116,10 @@ export default function MapPage() {
             {locatedTasks.map((task) => (
               <Marker
                 key={task._id}
-                position={[Number(task.latitude), Number(task.longitude)]}
+                position={[
+                  Number(task.latitude),
+                  Number(task.longitude),
+                ]}
               >
                 <Popup>
                   <div className="min-w-[150px]">
@@ -151,7 +150,7 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* Listed tasks with locations */}
+      {/* LIST */}
       {locatedTasks.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold">
@@ -184,6 +183,7 @@ export default function MapPage() {
         </div>
       )}
 
+      {/* FORM */}
       <TaskFormDialog
         open={showForm}
         onOpenChange={setShowForm}
@@ -191,7 +191,6 @@ export default function MapPage() {
         teams={teams}
         members={members}
         organizations={organizations}
-        onSaved={loadData}
       />
     </div>
   );

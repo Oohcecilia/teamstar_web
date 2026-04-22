@@ -6,6 +6,7 @@ import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-d
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import SyncProvider from "@/lib/SyncProvider";
+import { DataProvider } from "./lib/DataProvider";
 
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -56,56 +57,58 @@ function App() {
     <QueryClientProvider client={queryClientInstance}>
       <AuthProvider>
         <SyncProvider>   {/* 👈 ADD THIS */}
-          <Router>
-            <Routes>
-              <Route path="/auth" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-
-              <Route
-                path="/"
-                element={
-                  <ProtectedRoute>
-                    <Layout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route index element={<Dashboard />} />
-                <Route path="tasks" element={<Tasks />} />
-                <Route path="calendar" element={<CalendarPage />} />
-                <Route path="map" element={<MapPage />} />
-                <Route path="settings" element={<Settings />} />
+          <DataProvider>
+            <Router>
+              <Routes>
+                <Route path="/auth" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
 
                 <Route
-                  path="organizations"
+                  path="/"
                   element={
-                    <RoleProtectedRoute>
-                      <Organizations />
-                    </RoleProtectedRoute>
+                    <ProtectedRoute>
+                      <Layout />
+                    </ProtectedRoute>
                   }
-                />
+                >
+                  <Route index element={<Dashboard />} />
+                  <Route path="tasks" element={<Tasks />} />
+                  <Route path="calendar" element={<CalendarPage />} />
+                  <Route path="map" element={<MapPage />} />
+                  <Route path="settings" element={<Settings />} />
 
-                <Route
-                  path="teams"
-                  element={
-                    <RoleProtectedRoute>
-                      <Teams />
-                    </RoleProtectedRoute>
-                  }
-                />
+                  <Route
+                    path="organizations"
+                    element={
+                      <RoleProtectedRoute>
+                        <Organizations />
+                      </RoleProtectedRoute>
+                    }
+                  />
 
-                <Route
-                  path="members"
-                  element={
-                    <RoleProtectedRoute roles={["owner", "admin", "supervisor"]}>
-                      <Members />
-                    </RoleProtectedRoute>
-                  }
-                />
-              </Route>
+                  <Route
+                    path="teams"
+                    element={
+                      <RoleProtectedRoute>
+                        <Teams />
+                      </RoleProtectedRoute>
+                    }
+                  />
 
-              <Route path="*" element={<PageNotFound />} />
-            </Routes>
-          </Router>
+                  <Route
+                    path="members"
+                    element={
+                      <RoleProtectedRoute roles={["owner", "admin", "supervisor"]}>
+                        <Members />
+                      </RoleProtectedRoute>
+                    }
+                  />
+                </Route>
+
+                <Route path="*" element={<PageNotFound />} />
+              </Routes>
+            </Router>
+          </DataProvider>
           <Toaster />
         </SyncProvider> {/* 👈 ADD THIS */}
       </AuthProvider>

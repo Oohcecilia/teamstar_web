@@ -8,7 +8,9 @@ import React, {
 } from "react";
 
 import { apiRequest } from "@/api/client";
-import { resetLocalDB } from "@/db/couch";
+import { getDB, resetLocalDB } from "@/db/couch";
+import usePouchChanges from "@/hooks/usePouchChanges";
+
 
 const AuthContext = createContext();
 
@@ -26,6 +28,29 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [authError, setAuthError] = useState(null);
+
+
+
+
+  usePouchChanges(user, async (doc) => {
+    if (!doc || !user?.id) return;
+
+    // 🎯 Only react to CURRENT USER document
+    if (doc._id !== user.id) return;
+
+    console.log("👤 Real-time user update detected");
+
+    // 🔥 Merge with existing session (important)
+    const updatedUser = {
+      ...user,
+      ...doc,
+    };
+
+    setUser(updatedUser);
+
+    // ✅ keep localStorage in sync
+    localStorage.setItem(STORAGE_KEYS.ACCESS_RIGHTS, JSON.stringify(doc.access_rights || []));
+  }, null); // 
 
   // -------------------------
   // SAVE SESSION
