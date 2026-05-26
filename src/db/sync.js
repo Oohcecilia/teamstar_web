@@ -1,179 +1,106 @@
 import PouchDB from "pouchdb/dist/pouchdb.js";
 
-import { getDB, resetLocalDB } from "./couch";
+import { getDB } from "./couch";
 
 import {
   isDBInitialized,
   markDBInitialized,
 } from "./meta";
 
-const VITE_POUCHDB_ROOT_URL =
-  import.meta.env.VITE_POUCHDB_ROOT_URL;
-
-const VITE_AUTH_STRING =
-  import.meta.env.VITE_AUTH_STRING;
-
-const VITE_DB_NAME =
-  import.meta.env.VITE_DB_NAME;
+const API_URL = import.meta.env.VITE_API_URL;
+const INITIAL_SYNC_TIMEOUT_MS = 20000;
 
 let syncHandler = null;
+let activeUserId = null;
 
-export async function startSync({
-  id,
-  onStatus,
-  onProgress,
-}) {
+function withTimeout(promise, ms, message) {
+  let timeoutId;
+
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+  });
+
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
+}
+
+function createRemoteDB() {
+  return new PouchDB(`${API_URL}/couch`, {
+    skip_setup: true,
+  });
+}
+
+export async function runInitialSync({ id, onStatus, onProgress }) {
   const localDB = getDB(id);
+  const initialized = await isDBInitialized(localDB, id);
 
-  const remoteDB = new PouchDB(
-    `${VITE_POUCHDB_ROOT_URL}/${VITE_DB_NAME}`,
-    {
-      skip_setup: true,
-      fetch: (url, opts) => {
-        opts.headers.set(
-          "Authorization",
-          `Basic ${btoa(VITE_AUTH_STRING)}`
-        );
-        return PouchDB.fetch(url, opts);
-      },
-    }
-  );
-
-  const initialized = await isDBInitialized(
-    localDB,
-    id
-  );
-
-  if (!initialized) {
-    onStatus?.("initializing");
-
-    // 🔥 IMPORTANT: WAIT FULL REPLICATION
-    await new Promise((resolve, reject) => {
-      localDB
-        .replicate.from(remoteDB)
-        .on("complete", async () => {
-          await markDBInitialized(
-            localDB,
-            id
-          );
-
-          resolve();
-        })
-        .on("error", reject);
-    });
-
-    onStatus?.("ready");
+  if (initialized) {
+    onProgress?.(100);
+    return { initialized: true, skipped: true };
   }
 
-  // LIVE SYNC (background)
-  const sync = localDB.sync(remoteDB, {
+  const remoteDB = createRemoteDB();
+  onStatus?.("initializing");
+  onProgress?.(5);
+
+  await withTimeout(
+    new Promise((resolve, reject) => {
+      localDB
+        .replicate.from(remoteDB)
+        .on("change", (info) => {
+          const docsRead = info.docs_read || 0;
+          const pct = Math.min(95, 10 + docsRead * 5);
+          onProgress?.(pct);
+        })
+        .on("complete", resolve)
+        .on("error", reject);
+    }),
+    INITIAL_SYNC_TIMEOUT_MS,
+    "Initial sync timed out"
+  );
+
+  await markDBInitialized(localDB, id);
+  onStatus?.("ready");
+  onProgress?.(100);
+
+  return { initialized: true, skipped: false };
+}
+
+export async function startSync({ id, onStatus, onProgress }) {
+  const localDB = getDB(id);
+
+  if (syncHandler && activeUserId === id) {
+    return syncHandler;
+  }
+
+  if (syncHandler) {
+    syncHandler.cancel();
+    syncHandler = null;
+  }
+
+  const remoteDB = createRemoteDB();
+  activeUserId = id;
+
+  syncHandler = localDB.sync(remoteDB, {
     live: true,
     retry: true,
   });
 
-  sync
-    .on("active", () =>
-      onStatus?.("syncing")
-    )
-    .on("paused", () =>
-      onStatus?.("idle")
-    )
+  syncHandler
+    .on("active", () => onStatus?.("syncing"))
+    .on("paused", () => onStatus?.("idle"))
     .on("change", (info) => {
-      onProgress?.(
-        Math.min(
-          100,
-          (info.docs_read || 0)
-        )
-      );
+      onProgress?.(Math.min(100, info.docs_read || 0));
     })
-    .on("error", () =>
-      onStatus?.("error")
-    );
+    .on("error", () => onStatus?.("error"));
 
-  return true;
+  return syncHandler;
 }
 
-export function stopSync(id) {
+export function stopSync() {
   if (syncHandler) {
     syncHandler.cancel();
-
     syncHandler = null;
   }
 
-  resetLocalDB(id);
+  activeUserId = null;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// import PouchDB from "pouchdb/dist/pouchdb.js"
-// import { getDB, resetLocalDB } from "./couch"
-
-
-// const VITE_POUCHDB_ROOT_URL = import.meta.env.VITE_POUCHDB_ROOT_URL;
-// const VITE_AUTH_STRING = import.meta.env.VITE_AUTH_STRING;
-// const VITE_DB_NAME = import.meta.env.VITE_DB_NAME;
-
-// let syncHandler = null
-
-// // db/sync.js
-// export async function startSync({ id }) {
-//   const localDB = getDB(id);
-
-//   if (syncHandler) return syncHandler;
-
-//   const authString = btoa(VITE_AUTH_STRING);
-
-//   const remoteDB = new PouchDB( `${VITE_POUCHDB_ROOT_URL}/${VITE_DB_NAME}`,
-//     {
-//       skip_setup: true,
-//       fetch: (url, opts) => {
-//         opts.headers.set("Authorization", `Basic ${authString}`);
-//         return PouchDB.fetch(url, opts);
-//       }
-//     }
-//   );
-
-//   try {
-//     // 🔥 1. INITIAL PULL (VERY IMPORTANT)
-//     await localDB.replicate.from(remoteDB);
-
-//     // 🔥 2. LIVE SYNC
-//     syncHandler = localDB.sync(remoteDB, {
-//       live: true,
-//       retry: true,
-//     })
-//       .on("change", (info) => console.log("🔄 Sync success:", info))
-//       .on("error", (err) => console.error("❌ Sync error:", err));
-
-//     return syncHandler;
-
-//   } catch (err) {
-//     console.warning("❌ Sync init failed:", err);
-//   }
-// }
-
-// export function stopSync() {
-//   if (syncHandler) {
-//     syncHandler.cancel()
-//     syncHandler = null
-//   }
-//   resetLocalDB()
-// }

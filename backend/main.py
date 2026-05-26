@@ -1,12 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.auth import router as auth_router
+from routes.couch_proxy import router as couch_proxy_router
+from routes.google_calendar import router as google_calendar_router
 
 app = FastAPI()
 
-# -------------------------
-# CORS
-# -------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -18,7 +17,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -------------------------
-# ROUTES
-# -------------------------
 app.include_router(auth_router)
+app.include_router(couch_proxy_router)
+app.include_router(google_calendar_router)

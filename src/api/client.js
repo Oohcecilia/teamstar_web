@@ -1,58 +1,80 @@
 const API_URL = import.meta.env.VITE_API_URL;
 
+function getSessionToken() {
+  try {
+    const session = JSON.parse(localStorage.getItem("session") || "{}");
+    return session?.token || localStorage.getItem("token") || null;
+  } catch {
+    return localStorage.getItem("token") || null;
+  }
+}
+
 export async function apiRequest(
   endpoint,
-  { method = "GET", body, headers = {}, requireAuth = true } = {}
+  {
+    method = "GET",
+    body,
+    headers = {},
+    requireAuth = true,
+    timeoutMs = 12000,
+  } = {}
 ) {
   try {
-    // -------------------------
-    // 1. OFFLINE CHECK
-    // -------------------------
     if (!navigator.onLine) {
       throw new Error("OFFLINE");
     }
 
-    // -------------------------
-    // 2. BUILD HEADERS
-    // -------------------------
-    const token = localStorage.getItem("token");
+    const token = getSessionToken();
+    const shouldUseTimeout = Number.isFinite(timeoutMs) && timeoutMs > 0;
+    const controller = shouldUseTimeout ? new AbortController() : null;
+    const timeout = shouldUseTimeout
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
 
     const finalHeaders = {
       "Content-Type": "application/json",
       ...headers,
     };
 
-    // attach JWT automatically
     if (requireAuth && token) {
       finalHeaders.Authorization = `Bearer ${token}`;
     }
 
-    // -------------------------
-    // 3. REQUEST
-    // -------------------------
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      method,
-      headers: finalHeaders,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    let res;
+    try {
+      res = await fetch(`${API_URL}${endpoint}`, {
+        method,
+        headers: finalHeaders,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller?.signal,
+      });
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
 
-    const data = await res.json();
+    const text = await res.text();
+    const data = text ? JSON.parse(text) : {};
 
     if (!res.ok) {
-      throw new Error(data?.error || "API request failed");
+      const error = new Error(data?.error || data?.detail || "API request failed");
+      error.status = res.status;
+      throw error;
     }
 
     return data;
   } catch (err) {
-    // -------------------------
-    // 4. OFFLINE FALLBACK HOOK
-    // -------------------------
     if (err.message === "OFFLINE") {
       return {
         success: false,
         offline: true,
         error: "No internet connection",
       };
+    }
+
+    if (err.name === "AbortError") {
+      const timeoutError = new Error("Request timed out. Please try again.");
+      timeoutError.status = 408;
+      throw timeoutError;
     }
 
     throw err;
